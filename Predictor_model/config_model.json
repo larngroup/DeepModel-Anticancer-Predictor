@@ -1,0 +1,25 @@
+{
+   "exp_type": "rsem",
+	"autoencoder_exp_file": "../autoencoder/land_rsem_exp/Encoder_exp.h5",
+	"autoencoder_mut_file": "../autoencoder/land_rsem_mut/Encoder_mut.h5",
+	"ccle_exp_file": "../data/ccle_exp_rsem.pkl",
+	"ccle_mut_file": "../data/ccle_mut_rsem.pkl",
+	"cell_drug_id": "../data/cell_drug_id.csv",
+	"drugs_file": "../data/drugs_filtered.csv",
+	"ic50_imputed_file": "../data/IC50_CCLE_imputed.csv",
+	"n_drugs": 265,
+	"layers_dec_units": [512, 256, 128],
+	"dropout": 0.1,
+	"n_epochs": 100,
+	"batch_size": 128,
+	"learning_rate": 0.001,
+	"rnn": "GRU",
+	"n_units": 128,
+	"input_length": 90,
+	"ic50_imputed": "False",
+	"remove_outliers": "False",
+	"normalize": "False",
+	"norm_type": "percentile",
+	"cross_val": "False"
+}
+
