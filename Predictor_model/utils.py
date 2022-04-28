@@ -5,12 +5,20 @@ Created on Mon Jan 4 14:38:10 2022
 @author: filipa
 """
 
+import csv
 import numpy as np
 import json
+import time
+import os
+import pandas as pd
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import KFold
 from bunch import Bunch
+from rdkit import Chem
+from rdkit.Chem.Scaffolds import MurckoScaffold
+from rdkit.Chem import AllChem
+from rdkit import DataStructs
 
 def load_cfg(path):
     """ Loads configuration file
@@ -24,6 +32,84 @@ def load_cfg(path):
         config_dict = json.load(config_file)
         config = Bunch(config_dict)
     return config
+
+
+def reading_csv(config, dataset_identifier):
+    """
+    config: configuration file
+    dataset_identifier: dataset to use
+
+    Returns
+    -------
+    smiles, labels: Lists with the loaded data 
+    """
+    if dataset_identifier == 'ups7':
+        filepath = config.datapath_ups7
+    elif dataset_identifier == 'jak2':
+        filepath = config.datapath_jak2
+    elif dataset_identifier == 'a2a':
+        filepath = config.datapath_a2a
+    elif dataset_identifier == 'kop':
+        filepath = config.datapath_kop
+    else:
+        filepath = config.datapath_var
+        
+    raw_smiles = []
+    raw_labels = []
+    
+    with open(filepath, 'r') as csvFile:
+        reader = csv.reader(csvFile)
+        it = iter(reader)
+        next(it, None)  # skip first item.    
+        for row in it:
+            try:
+                raw_smiles.append(row[0])
+                raw_labels.append(float(row[1]))
+            except:
+                pass
+    
+    smiles = []
+    labels = []
+    
+    # SMILES with length under a certain threshold defined in the configuration file
+    for i in range(len(raw_smiles)):
+        if len(raw_smiles[i]) <= config.smiles_len_threshold  and 'a' not in raw_smiles[i] and 'Z' not in raw_smiles[i] and 'K' not in raw_smiles[i]:
+            smiles.append(raw_smiles[i])
+            labels.append(raw_labels[i])
+
+    return smiles, labels
+           
+
+def tokenize(smiles, tokens, len_threshold):
+    """
+    Transforms the SMILES strings into a list of tokens
+    ----------
+    smiles: Set of SMILES strings with different sizes;
+    tokens: Set of characters;
+    len_threshold: Integer that specifies the maximum size of the padding    
+    
+    Returns
+    -------
+    tokenized: returns the list with tokenized SMILES
+
+    """  
+    tokenized = []  
+    for smile in smiles:
+        i = 0
+        token = []
+        while (i < len(smile)):
+            for j in range(len(tokens)):
+                symbol = tokens[j]
+                if symbol == smile[i:i + len(symbol)]:
+                    token.append(symbol)
+                    i += len(symbol)
+                    break
+                
+        while len(token) < len_threshold:
+            token.append(' ')
+        tokenized.append(token)
+        
+    return tokenized
 
 def token(mol):
     """ returns the list of tokens in a molecule """    
@@ -64,6 +150,66 @@ def padding(molecules,lenfeatures):
             padMolecules.append(molecule)
     return padMolecules  
   
+             
+def smiles2idx(smiles,tokenDict):
+    """
+    Transforms each SMILES token to the correspondent integer, according the token-integer dictionary.
+    ----------
+    smiles: Set of SMILES strings with different sizes;
+    tokenDict: Dictionary that maps the characters to integers;    
+    -------
+    newSmiles: Returns the transformed smiles, with the characters replaced by 
+    the numbers. 
+    """           
+    newSmiles =  np.zeros((len(smiles), len(smiles[0])))
+    for i in range(0,len(smiles)):
+        for j in range(0,len(smiles[i])):
+            
+            newSmiles[i,j] = tokenDict[smiles[i][j]]
+            
+    return newSmiles
+     
+
+def smiles2ecfp(smiles, radius, bit_len=4096, index=None):
+    """
+    Transforms a list of SMILES strings into a list of ECFP.
+    ----------
+    smiles: List of SMILES strings to transform
+    -------
+    This function returns the SMILES strings transformed into a vector of 4096 elements
+    """
+    fps = np.zeros((len(smiles), bit_len))
+    
+    for i, smile in enumerate(smiles):
+        mol = Chem.MolFromSmiles(smile)
+        arr = np.zeros((1,))
+        try:
+            mol = MurckoScaffold.GetScaffoldForMol(mol)
+            fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=bit_len)
+            DataStructs.ConvertToNumpyArray(fp, arr)
+            fps[i, :] = arr
+        except:
+            print(smile)
+            fps[i, :] = [0] * bit_len
+            
+    return pd.DataFrame(fps, index=(smiles if index is None else index))
+    
+
+def smiles2rdkit(smiles):
+    """
+    Transforms a list of SMILES strings into a list of rdkit fp.
+    ----------
+    smiles: List of SMILES strings to transform
+    -------
+    This function returns the SMILES strings transformed
+    """
+    
+    mols = [Chem.MolFromSmiles(smi) for smi in smiles]
+    
+    rdk_fp = [Chem.RDKFingerprint(mol) for mol in mols]
+
+    return rdk_fp
+
 
 def cv_split(data, config):
     """
@@ -91,6 +237,7 @@ def normalize(y_train, y_val, y_test, norm_type):
     -------
     Returns data with normalized values. 
     """
+    print(y_test)
 
     if norm_type == 'percentile':
         q1_train = np.percentile(y_train, 5)
@@ -122,10 +269,11 @@ def normalize(y_train, y_val, y_test, norm_type):
         y_val = (y_val - y_mean) / y_std
         y_test  = (y_test - y_mean) / y_std
     
-    my_dict = {'Labels_train': np.reshape(y_train, -1) , 'Labels_val': np.reshape(y_val, -1), 'Labels_test': np.reshape(y_test, -1)}
-    fig, ax = plt.subplots()
-    ax.boxplot(my_dict.values())
-    ax.set_xticklabels(my_dict.keys())
+    print(y_test)
+    # my_dict = {'Labels_train': np.reshape(y_train, -1) , 'Labels_val': np.reshape(y_val, -1), 'Labels_test': np.reshape(y_test, -1)}
+    # fig, ax = plt.subplots()
+    # ax.boxplot(my_dict.values())
+    # ax.set_xticklabels(my_dict.keys())
    
     return aux, y_train, y_val, y_test
 
@@ -139,6 +287,7 @@ def denormalization(predictions, aux, norm_type):
     -------
     Returns the denormalized predictions.
     """
+    print(predictions)
     if norm_type == 'percentile':
         q1_train = aux[0]
         q3_train = aux[1]
@@ -156,6 +305,9 @@ def denormalization(predictions, aux, norm_type):
         y_std = aux[1]
 
         predictions = (y_std) * predictions + y_mean
+
+    print(predictions)
+
   
     return predictions
 
