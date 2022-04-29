@@ -1,0 +1,15 @@
+{
+	"exp_file": "../data_TCGA/rsem_data/E_TCGA_land_rsem.pkl",
+	"mut_file": "../data_TCGA/rsem_data/M_TCGA_land_rsem.pkl",
+	"inp_dimension": 1954,
+	"layers_enc_units": [4096, 2048, 1024, 512],
+	"layers_dec_units": [512, 1024, 2048, 4096],
+	"latent_dim": 128,
+	"optimizer": "adam",
+	"n_epochs": 100,
+	"batch_size": 64,
+	"dropout": 0.1,
+	"learning_rate": 0.001,
+	"cross_validation" : "False" 
+}
+
